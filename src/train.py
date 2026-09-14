@@ -2,9 +2,10 @@
 Renku Jobs: model training entrypoint
 
 This script is written to run as a non-interactive Renku Job. It reads its
-training data from an INPUT folder and writes every result to an OUTPUT
-folder. Both folders are configurable via environment variables so that,
-in RenkuLab, you can point them at mounted data connectors instead of the
+training data from an INPUT folder and writes every result to a run-<timestamp>
+subfolder inside an OUTPUT folder, so that each run's files are kept separate
+from previous runs. Both folders are configurable via environment variables so
+that, in RenkuLab, you can point them at mounted data connectors instead of the
 copies committed to the repository:
 
     INPUT_DATA_DIR   where training_data.csv is read from   (default: input-data)
@@ -54,9 +55,12 @@ def log(message: str) -> None:
 
 def main() -> int:
     started = time.time()
+    run_id = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = OUTPUT_DIR / f"run-{run_id}"
+
     log("Renku Jobs demo - training run starting")
     log(f"Reading input from : {INPUT_DIR.resolve()}")
-    log(f"Writing output to  : {OUTPUT_DIR.resolve()}")
+    log(f"Writing output to  : {run_dir.resolve()}")
 
     input_csv = INPUT_DIR / "training_data.csv"
     if not input_csv.exists():
@@ -65,7 +69,7 @@ def main() -> int:
             "is mounted and that INPUT_DATA_DIR points at it.")
         return 1
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
 
     # --- Load ----------------------------------------------------------------
     df = pd.read_csv(input_csv)
@@ -99,8 +103,8 @@ def main() -> int:
     log(f"Test accuracy : {accuracy:.4f}")
     log(f"Macro F1      : {macro_f1:.4f}")
 
-    # --- Persist results to the OUTPUT folder --------------------------------
-    model_path = OUTPUT_DIR / "model.joblib"
+    # --- Persist results to the run folder ------------------------------------
+    model_path = run_dir / "model.joblib"
     joblib.dump(model, model_path)
     log(f"Saved model -> {model_path.name}")
 
@@ -117,11 +121,11 @@ def main() -> int:
         "accuracy": round(float(accuracy), 4),
         "macro_f1": round(float(macro_f1), 4),
     }
-    (OUTPUT_DIR / "metrics.json").write_text(json.dumps(metrics, indent=2))
+    (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2))
     log("Saved metrics -> metrics.json")
 
     report = classification_report(y_test, preds, digits=3)
-    (OUTPUT_DIR / "classification_report.txt").write_text(report)
+    (run_dir / "classification_report.txt").write_text(report)
     log("Saved report -> classification_report.txt")
 
     cm = confusion_matrix(y_test, preds)
@@ -130,12 +134,12 @@ def main() -> int:
     disp.plot(ax=ax, colorbar=False)
     ax.set_title("Confusion matrix for Renku Jobs demo")
     fig.tight_layout()
-    fig.savefig(OUTPUT_DIR / "confusion_matrix.png", dpi=120)
+    fig.savefig(run_dir / "confusion_matrix.png", dpi=120)
     plt.close(fig)
     log("Saved figure -> confusion_matrix.png")
 
     elapsed = time.time() - started
-    log(f"All results written to {OUTPUT_DIR.resolve()}")
+    log(f"All results written to {run_dir.resolve()}")
     log(f"Done in {elapsed:.1f}s")
     return 0
 
